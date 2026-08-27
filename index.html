@@ -49,7 +49,7 @@ tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:none}
 
   <div class="card noprint">
     <div class="top">
-      <div class="grow"><label>Jira base URL (optional, makes keys clickable)</label><input id="jira" placeholder="https://ceipal.atlassian.net"></div>
+      <div class="grow"><label>Jira base URL — enter this once and every ticket key becomes a clickable link</label><input id="jira" placeholder="https://ceipal.atlassian.net"></div>
     </div>
     <label class="hint">Paste ticket number and description. Tab separated, comma separated, or one per line.</label>
     <textarea id="paste" placeholder="CHC-1041&#9;OIG screening returns false positive on active clinicians&#10;CHC-1042&#9;VMS shift push fails when credential requirement changes&#10;CHC-1043&#9;Credential expiry banner missing on clinician profile"></textarea>
@@ -86,7 +86,8 @@ tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:none}
 const HOURS={XS:4,S:10,M:22,L:45,XL:90};
 const ORDER={XL:0,L:1,M:2,S:3,XS:4};
 const KEY="ceipal-ticket-sizer";
-let rows=[], jira="", uid=0;
+const JIRA_DEFAULT="https://ceipal.atlassian.net";
+let rows=[], jira=JIRA_DEFAULT, uid=0;
 
 /* size guess, smallest signal first so "credential expiry banner" reads as cosmetic, not compliance */
 const HINTS=[
@@ -122,7 +123,11 @@ function parse(raw){
   return out;
 }
 const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const url=k=>{const b=jira.trim().replace(/\/+$/,"");return b&&k.trim()?b+"/browse/"+encodeURIComponent(k.trim()):"";};
+const url=k=>{
+  const b=jira.trim().replace(/\/+$/,"");
+  const key=String(k||"").trim().toUpperCase().replace(/[\s_]+/,"-");
+  return b&&key?b+"/browse/"+encodeURIComponent(key):"";
+};
 
 function resort(){ rows.sort((a,b)=>(ORDER[a.band]-ORDER[b.band])||(b.hours-a.hours)); }
 function draw(){
@@ -155,7 +160,7 @@ function load(){
   try{
     const d=JSON.parse(localStorage.getItem(KEY)||"null");
     if(!d) return;
-    rows=d.rows||[]; jira=d.jira||"";
+    rows=d.rows||[]; jira=(d.jira!=null&&d.jira!=="")?d.jira:JIRA_DEFAULT;
     rows.forEach(r=>{ if(r.id==null) r.id=++uid; else uid=Math.max(uid,Number(r.id)||0); });
     document.getElementById("jira").value=jira;
   }catch(e){}
@@ -216,7 +221,9 @@ document.getElementById("csv").onclick=()=>{
   setTimeout(()=>URL.revokeObjectURL(a.href),1000);
 };
 
-load(); draw();
+load();
+document.getElementById("jira").value=jira;
+draw();
 </script>
 </body>
 </html>
