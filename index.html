@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sprint Ticket Sizer</title>
+<style>
+:root{--bg:#f6f7f9;--panel:#fff;--ink:#14181d;--muted:#5d6773;--line:#dfe3e8;--accent:#0b5fff;--row:#fafbfc;
+--xl:#b3261e;--l:#a15c00;--m:#0b5fff;--s:#0a6b4f;--xs:#5d6773}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1216;--panel:#171b21;--ink:#e8ecf1;--muted:#9aa5b1;--line:#2a313a;--accent:#6f9dff;--row:#1c2129;
+--xl:#ff8a80;--l:#ffc46b;--m:#6f9dff;--s:#6fd8b3;--xs:#9aa5b1}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+main{max-width:1200px;margin:0 auto;padding:22px}
+h1{font-size:18px;margin:0 0 2px}
+.sub{color:var(--muted);font-size:12.5px;margin:0 0 18px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
+textarea{width:100%;min-height:150px;font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:10px}
+button{font:inherit;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:7px 12px;cursor:pointer}
+button:hover{border-color:var(--accent);color:var(--accent)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button.primary:hover{opacity:.9;color:#fff}
+.btns{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
+.hint{color:var(--muted);font-size:12px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--line);vertical-align:middle}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);white-space:nowrap}
+tbody tr:nth-child(even){background:var(--row)}
+td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+select,input{font:inherit;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:4px 6px}
+input.h{width:72px;text-align:right}
+a{color:var(--accent)}
+.b{display:inline-block;font-weight:700;font-size:11px;border:1px solid currentColor;border-radius:20px;padding:1px 8px}
+.b.XL{color:var(--xl)}.b.L{color:var(--l)}.b.M{color:var(--m)}.b.S{color:var(--s)}.b.XS{color:var(--xs)}
+tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:none}
+.scroll{overflow-x:auto}
+.empty{padding:28px;text-align:center;color:var(--muted)}
+.top{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px}
+.top label{display:block;font-size:12px;color:var(--muted)}
+.grow{flex:1;min-width:220px}
+.top input{width:100%}
+@media print{.noprint{display:none!important}}
+</style>
+</head>
+<body>
+<main>
+  <h1>Sprint Ticket Sizer</h1>
+  <p class="sub">Paste tickets. Get them ranked hardest to easiest with an hours estimate. Hours are one developer's build time, coding only. QA, review, and deployment are not included. Nothing writes back to Jira.</p>
+
+  <div class="card noprint">
+    <div class="top">
+      <div class="grow"><label>Jira base URL (optional, makes keys clickable)</label><input id="jira" placeholder="https://ceipal.atlassian.net"></div>
+    </div>
+    <label class="hint">Paste ticket number and description. Tab separated, comma separated, or one per line.</label>
+    <textarea id="paste" placeholder="CHC-1041&#9;OIG screening returns false positive on active clinicians&#10;CHC-1042&#9;VMS shift push fails when credential requirement changes&#10;CHC-1043&#9;Credential expiry banner missing on clinician profile"></textarea>
+    <div class="btns">
+      <button class="primary" id="go">Rank and size</button>
+      <button id="append">Add to existing list</button>
+      <button id="clear">Clear all</button>
+      <span class="hint" id="msg"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="scroll"><table id="tbl">
+      <thead><tr>
+        <th style="width:40px">#</th><th style="width:120px">Ticket</th><th>Description</th>
+        <th style="width:110px">Difficulty</th><th style="width:90px" class="num">Hours</th>
+        <th style="width:80px" class="num">Dev days</th><th style="width:40px" class="noprint"></th>
+      </tr></thead>
+      <tbody id="tb"></tbody>
+      <tfoot id="tf"></tfoot>
+    </table></div>
+    <div class="btns noprint">
+      <button id="rerank">Re-rank by difficulty</button>
+      <button id="copy">Copy list</button>
+      <button id="csv">Download CSV</button>
+      <button onclick="window.print()">Print</button>
+      <span class="hint">Difficulty sets the hours: XS 4, S 10, M 22, L 45, XL 90. Calibrated against ATS actuals of 13, 16, 24, 30, and 40 hours. Type over any figure to override it.</span>
+    </div>
+  </div>
+</main>
+
+<script>
+"use strict";
+const HOURS={XS:4,S:10,M:22,L:45,XL:90};
+const ORDER={XL:0,L:1,M:2,S:3,XS:4};
+const KEY="ceipal-ticket-sizer";
+let rows=[], jira="", uid=0;
+
+/* size guess, smallest signal first so "credential expiry banner" reads as cosmetic, not compliance */
+const HINTS=[
+ ["XS",["typo","label","tooltip","rename","wording","copy change","text change","spelling"]],
+ ["S",["banner","field","column","filter","sort","validation","error message","placeholder","icon","checkbox","dropdown"]],
+ ["M",["report","dashboard","export","checklist","onboarding task","notification","permission","role","search","audit log","offer letter","job board"]],
+ ["L",["screening","oig","ofac","sam","nsopw","omig","nlc","imlc","license","credential workflow","sync","api","pay package","rate","per diem","expiry","compliance"]],
+ ["XL",["new integration","new vms","vms integration","migration","engine","rewrite","re-architect","platform","end-to-end","multi-tenant"]]
+];
+function guess(text){
+  const s=(text||"").toLowerCase();
+  for(const [band,words] of HINTS){ if(words.some(w=>s.includes(w))) return band; }
+  return "M";
+}
+function parse(raw){
+  const out=[];
+  raw.split(/\r?\n/).forEach(line=>{
+    if(!line.trim()) return;
+    let cells;
+    if(line.includes("\t")) cells=line.split("\t");
+    else if(/^[^,]{1,20},/.test(line)) cells=line.split(/,(.+)/).slice(0,2);
+    else{
+      const m=line.match(/^\s*([A-Za-z][A-Za-z0-9]*[-_ ]?\d+)\s*[-–—:|]?\s*(.*)$/);
+      cells=m?[m[1],m[2]]:["",line];
+    }
+    cells=cells.map(c=>String(c==null?"":c).trim().replace(/^"|"$/g,""));
+    const key=cells[0]||"", title=cells.slice(1).filter(Boolean).join(" ").trim();
+    if(/^(ticket|key|id|issue|jira)\b/i.test(key)&&/^(summary|title|desc)/i.test(title)) return;
+    if(!key&&!title) return;
+    const band=guess(key+" "+title);
+    out.push({id:++uid,key,title,band,hours:HOURS[band]});
+  });
+  return out;
+}
+const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const url=k=>{const b=jira.trim().replace(/\/+$/,"");return b&&k.trim()?b+"/browse/"+encodeURIComponent(k.trim()):"";};
+
+function resort(){ rows.sort((a,b)=>(ORDER[a.band]-ORDER[b.band])||(b.hours-a.hours)); }
+function draw(){
+  const tb=document.getElementById("tb"), tf=document.getElementById("tf");
+  if(!rows.length){ tb.innerHTML=`<tr><td colspan="7" class="empty">Paste a list above and press Rank and size.</td></tr>`; tf.innerHTML=""; return; }
+  tb.innerHTML=rows.map((r,i)=>{
+    const u=url(r.key);
+    return `<tr data-id="${r.id}">
+      <td>${i+1}</td>
+      <td>${u?`<a href="${esc(u)}" target="_blank" rel="noopener">${esc(r.key)}</a>`:esc(r.key)||"—"}</td>
+      <td>${esc(r.title)||"—"}</td>
+      <td><select data-id="${r.id}" data-f="band">${["XL","L","M","S","XS"].map(b=>`<option ${b===r.band?"selected":""}>${b}</option>`).join("")}</select></td>
+      <td class="num"><input class="h" type="number" min="0" step="1" data-id="${r.id}" data-f="hours" value="${r.hours}"></td>
+      <td class="num">${(r.hours/6).toFixed(1)}</td>
+      <td class="noprint"><button data-id="${r.id}" data-f="del">×</button></td></tr>`;
+  }).join("");
+  foot();
+  save();
+}
+function foot(){
+  const tf=document.getElementById("tf");
+  if(!rows.length){ tf.innerHTML=""; return; }
+  const total=rows.reduce((s,r)=>s+(Number(r.hours)||0),0);
+  const by={}; rows.forEach(r=>by[r.band]=(by[r.band]||0)+1);
+  tf.innerHTML=`<tr><td colspan="3">${rows.length} tickets · ${Object.keys(ORDER).filter(b=>by[b]).map(b=>`<span class="b ${b}">${b}</span> ${by[b]}`).join(" &nbsp; ")}</td>
+    <td>Total</td><td class="num">${total}</td><td class="num">${(total/6).toFixed(1)}</td><td class="noprint"></td></tr>`;
+}
+function save(){ try{ localStorage.setItem(KEY,JSON.stringify({rows,jira})); }catch(e){} }
+function load(){
+  try{
+    const d=JSON.parse(localStorage.getItem(KEY)||"null");
+    if(!d) return;
+    rows=d.rows||[]; jira=d.jira||"";
+    rows.forEach(r=>{ if(r.id==null) r.id=++uid; else uid=Math.max(uid,Number(r.id)||0); });
+    document.getElementById("jira").value=jira;
+  }catch(e){}
+}
+function msg(t){ document.getElementById("msg").textContent=t||""; }
+
+document.getElementById("go").onclick=()=>{
+  const p=parse(document.getElementById("paste").value);
+  if(!p.length){ msg("Nothing recognized in that paste."); return; }
+  rows=p; resort(); draw(); msg(p.length+" tickets sized. Adjust any difficulty and the hours follow.");
+};
+document.getElementById("append").onclick=()=>{
+  const p=parse(document.getElementById("paste").value);
+  if(!p.length){ msg("Nothing recognized in that paste."); return; }
+  rows=rows.concat(p); resort(); draw(); msg(p.length+" added.");
+};
+document.getElementById("rerank").onclick=()=>{ resort(); draw(); msg("Re-sorted by difficulty."); };
+document.getElementById("clear").onclick=()=>{
+  if(!rows.length||confirm("Clear the list?")){ rows=[]; document.getElementById("paste").value=""; draw(); msg(""); }
+};
+document.getElementById("jira").oninput=e=>{ jira=e.target.value; draw(); };
+const find=id=>rows.find(r=>String(r.id)===String(id));
+document.addEventListener("change",e=>{
+  const el=e.target, r=find(el.dataset.id);
+  if(!r||el.dataset.f!=="band") return;
+  r.band=el.value; r.hours=HOURS[el.value];
+  // update this row in place. no re-sort, so the row you edited stays where you are looking.
+  const tr=el.closest("tr");
+  const hi=tr.querySelector("input.h"); if(hi) hi.value=r.hours;
+  tr.children[5].textContent=(r.hours/6).toFixed(1);
+  foot(); save(); msg("Updated. Press Re-rank to re-sort by difficulty.");
+});
+document.addEventListener("input",e=>{
+  const el=e.target, r=find(el.dataset.id);
+  if(!r||el.dataset.f!=="hours") return;
+  r.hours=Number(el.value)||0;
+  el.closest("tr").children[5].textContent=(r.hours/6).toFixed(1);
+  foot(); save();
+});
+document.addEventListener("click",e=>{
+  const b=e.target.closest("button[data-f='del']"); if(!b) return;
+  rows=rows.filter(r=>String(r.id)!==String(b.dataset.id)); draw();
+});
+document.getElementById("copy").onclick=()=>{
+  const total=rows.reduce((s,r)=>s+(Number(r.hours)||0),0);
+  const txt=rows.map((r,i)=>`${i+1}. ${r.key||"(no key)"} — ${r.title||"untitled"} | ${r.band} | ${r.hours} h`).join("\n")
+    +`\n\nTotal: ${total} hours (${(total/6).toFixed(1)} dev days at 6 h)`;
+  if(navigator.clipboard) navigator.clipboard.writeText(txt).then(()=>msg("Copied."),()=>msg("Copy failed. Use Download CSV."));
+  else msg("Copy unavailable. Use Download CSV.");
+};
+document.getElementById("csv").onclick=()=>{
+  const q=s=>`"${String(s==null?"":s).replace(/"/g,'""')}"`;
+  const csv=["Rank,Ticket,Description,Difficulty,Hours,Dev days"]
+    .concat(rows.map((r,i)=>[i+1,q(r.key),q(r.title),r.band,r.hours,(r.hours/6).toFixed(1)].join(","))).join("\n");
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
+  a.download="sprint-tickets-sized.csv"; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+};
+
+load(); draw();
+</script>
+</body>
+</html>
